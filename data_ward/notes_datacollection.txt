@@ -1,0 +1,34 @@
+UK 2001
+Age: all (16-74 for crossed)
+Ethnic group [E][S][W]
+Nc-Sec 7 
+
+
+UK 2011
+https://infuse.ukdataservice.ac.uk/ > 2001 > unit: persons 
+Age: 16 over (16-74 for crossed)
+Ethnic group [E][S][W]
+Nc-Sec 7 
+sex: total
+
+> With UK 2011, we could have had Ethnicity × NS-SEC × Age at OA level, but the ethnic group are then aggregated: 
+Collapse White	White
+	English/Welsh/Scottish/Northern Irish/British
+	Irish
+	Other White
+	Asian/Asian British
+	Black/African/Caribbean/Black British
+	Mixed/multiple ethnic group
+	Other ethnic group
+
+
+UK 2021: https://www.ons.gov.uk/census
+electoral wards > ALL usual residents in household > ethnic group 20 * ns-sec 12
+https://www.ons.gov.uk/datasets/create/filter-outputs/64a372e4-4256-4de7-9b9d-8c306b1ff966#get-data
+City of London aggregated and cannot be disaggregated
+
+
+City of Westminster and City of London to aggregate and take as unit
+
+Shapefile
+https://data.london.gov.uk/dataset/statistical-gis-boundary-files-for-london-20od9
