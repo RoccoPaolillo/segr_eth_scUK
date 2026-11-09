@@ -715,7 +715,7 @@ df_final <- df_final %>%
   ) %>%
   ungroup()
 
-write_xlsx(df_final,"df_final.xlsx")
+# write_xlsx(df_final,"df_final.xlsx")
 # Figures for neighborhood concentration and shapefile ####
 
 # shapefile upload and preparation (used also for Moran's I)
@@ -1332,7 +1332,7 @@ results[[q]] <- results_q
 }
   
 results_final <- bind_rows(results)
-write_xlsx(results_final,paste0("index_table/",group_tocompute,".xlsx"))
+# write_xlsx(results_final,paste0("index_table/",group_tocompute,".xlsx"))
 results_final
 }
 
@@ -1356,7 +1356,8 @@ for (n in c(
  df_list[[n]] <- index_groups(n)
  
 }
-df_index <- bind_rows(df_list, .id = "major_minor")
+df_index <- bind_rows(df_list, .id = "major_minor") %>% 
+  mutate(year = as.character(year))
 write_xlsx(df_index,"index_table/df_index.xlsx")
 
 # Exposure for individual subgroups
@@ -1498,3 +1499,99 @@ ggsave("plotfacet/exposure_sc.jpg", width = 12, height = 6)
 # arrange(desc(.data[[subgroup]])) %>%
 # select(borough, all_of(subgroup))
 
+# To correct exposure measure for the population size 
+
+ethnic_groups <- c(
+  "bangladeshi", "indian", "pakistani", "chinese",
+  "african", "carribean", "ewsnib", "irish",
+  "whiteasian", "whiteblcarribean", "whiteblafrican"
+)
+
+df_ethnic_share <- df_final %>%
+  group_by(year) %>%
+  summarise(
+    pop_london = sum(pop_borough, na.rm = TRUE),
+    across(
+      all_of(paste0("total_", ethnic_groups)),
+      ~ sum(.x, na.rm = TRUE)
+    ),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(
+    cols = starts_with("total_"),
+    names_to = "ethnicspecific",
+    names_prefix = "total_",
+    values_to = "ethnic_pop"
+  ) %>%
+  mutate(
+    ethnic_pop_share = ethnic_pop / pop_london
+  ) %>%
+  arrange(ethnic, year)
+
+# for withn-ethnic class isolation
+
+fracplotethnic <- df_final %>%
+  select(
+    year,
+    matches("^(black|white|asian|mixed).*_sc[1-7]$"),
+    starts_with("total_")
+  ) %>%
+  group_by(year) %>%
+  summarise(
+    across(where(is.numeric), ~sum(.x, na.rm = TRUE)),
+    .groups = "drop"
+  )
+
+vars <- names(fracplotethnic %>%
+                select(matches("^(black|white|asian|mixed).*_sc[1-7]$")))
+
+for (v in vars) {
+  ethnic <- sub("^[^_]*_", "", v)
+  ethnic <- sub("_sc[1-7]$", "", ethnic)
+  
+  denom <- paste0("total_", ethnic)
+  
+  fracplotethnic[[paste0("frac_", v)]] <-
+    fracplotethnic[[v]] / fracplotethnic[[denom]]
+
+}
+
+
+df_fractions_eth <- fracplotethnic %>%
+  select(
+    year,
+    starts_with("frac_")
+  ) %>%
+  pivot_longer(
+    cols = starts_with("frac_"),
+    names_to = "group",
+    names_prefix = "frac_",
+    values_to = "ethnic_sub_share"
+  )
+
+# df_index merging
+
+df_index <- df_index %>%
+  mutate(year = as.character(year)) %>%
+  left_join(
+    df_fractions_eth,
+    by = c("year", "group"),
+    relationship = "many-to-one"
+  )
+
+df_index <- df_index %>% 
+  left_join(
+    df_ethnic_share,
+    by = c("year", "ethnicspecific"),
+    relationship = "many-to-one"
+  )
+
+df_index <- df_index %>%
+  mutate(
+    rel_ethexp_pop = (
+      ExpEth / ethnic_pop_share
+      ),
+    rel_wetclis_eth = (
+      ExpEthSc / ethnic_sub_share
+    )
+  )
