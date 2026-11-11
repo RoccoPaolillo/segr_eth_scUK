@@ -1611,3 +1611,96 @@ df_index_summary <- df_index %>%
     .groups = "drop"
   ) 
 
+# Correcting exposure by socio-occupational class
+
+df_class_share <- df_final %>%
+  group_by(year) %>%
+  summarise(
+    pop_london = sum(pop_borough, na.rm = TRUE),
+    across(
+      all_of(paste0("total_sc", 1:7)),
+      ~ sum(.x, na.rm = TRUE)
+    ),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(
+    cols = starts_with("total_sc"),
+    names_to = "socstatus",
+    names_prefix = "total_",
+    values_to = "class_pop"
+  ) %>%
+  mutate(
+    class_pop_share = class_pop / pop_london,
+    year = as.character(year)
+  )
+
+df_fractions_sc <- fracplotethnic %>%
+  select(
+    year,
+    matches("^(black|white|asian|mixed).*_sc[1-7]$")
+  ) %>%
+  pivot_longer(
+    cols = -year,
+    names_to = "group",
+    values_to = "subgroup_pop"
+  ) %>%
+  mutate(
+    socstatus = sub("^.*_(sc[1-7])$", "\\1", group),
+    year = as.character(year)
+  ) %>%
+  left_join(
+    df_class_share %>%
+      select(year, socstatus, class_pop),
+    by = c("year", "socstatus"),
+    relationship = "many-to-one"
+  ) %>%
+  mutate(
+    class_ethnic_share = subgroup_pop / class_pop
+  ) %>%
+  select(year, group, class_ethnic_share)
+
+df_index <- df_index %>%
+  left_join(
+    df_class_share %>%
+      select(year, socstatus, class_pop, class_pop_share),
+    by = c("year", "socstatus"),
+    relationship = "many-to-one"
+  ) %>%
+  left_join(
+    df_fractions_sc,
+    by = c("year", "group"),
+    relationship = "many-to-one"
+  ) %>%
+  mutate(
+    rel_wclethis_sc = ExpScEth / class_ethnic_share,
+    rel_class_exp = ExpSC / class_pop_share
+  )
+
+df_index_summary <- df_index %>%
+  group_by(year, ethnicspecific) %>%
+  summarise(
+    across(
+      c(ExpEth, rel_ethexp_pop, ExpEthSc, rel_wetclis_eth),
+      list(
+        mean = ~ mean(.x, na.rm = TRUE),
+        sd = ~ sd(.x, na.rm = TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    ),
+    .groups = "drop"
+  ) 
+
+df_index_summarysc <- df_index %>%
+  group_by(year, socstatus) %>%
+  summarise(
+    across(
+      c(ExpSC, rel_class_exp, ExpScEth, rel_wclethis_sc),
+      list(
+        mean = ~ mean(.x, na.rm = TRUE),
+        sd = ~ sd(.x, na.rm = TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    ),
+    .groups = "drop"
+  )
+  
