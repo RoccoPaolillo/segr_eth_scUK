@@ -9,6 +9,7 @@ library(spdep)
 library(writexl)
 library(ggrepel)
 library(patchwork)
+library(kableExtra)
 
 
 
@@ -1526,7 +1527,7 @@ df_ethnic_share <- df_final %>%
   mutate(
     ethnic_pop_share = ethnic_pop / pop_london
   ) %>%
-  arrange(ethnic, year)
+  arrange(ethnicspecific, year)
 
 # for withn-ethnic class isolation
 
@@ -1595,3 +1596,18 @@ df_index <- df_index %>%
       ExpEthSc / ethnic_sub_share
     )
   )
+
+df_index_summary <- df_index %>%
+  group_by(year, ethnicspecific) %>%
+  summarise(
+    across(
+      c(ExpEth, rel_ethexp_pop, ExpEthSc, rel_wetclis_eth),
+      list(
+        mean = ~ mean(.x, na.rm = TRUE),
+        sd = ~ sd(.x, na.rm = TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    ),
+    .groups = "drop"
+  ) 
+
