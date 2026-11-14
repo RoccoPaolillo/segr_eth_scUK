@@ -10,8 +10,10 @@ library(writexl)
 library(ggrepel)
 library(patchwork)
 library(kableExtra)
-
-
+library(ggbreak)
+library(magick)
+library(cowplot)
+library(patchwork)
 
 setwd("C:/Users/LENOVO/Documents/GitHub/discrete_choice/")
 for (i in c("index_table","plotfacet","picsconc")) {
@@ -818,16 +820,117 @@ ethss_prop <- fracplotstatus %>%
   geom_line(aes(color = specific, group = specific)) +
   facet_wrap(~ socstatus, nrow = 1) +
   scale_y_continuous(labels = scales::label_percent()) +
+  scale_y_break(c(0.20, 0.40), scales = 0.5) +
+  scale_x_discrete(
+    breaks = c("2001", "2011", "2021"),
+    expand = expansion(add = 0.2)
+  ) +
   labs(y = NULL,
        color = "Ethnic group") +
   ggtitle("Ethnic composition within socio-occupational class") +
   theme_bw() +
   guides(
-    color = guide_legend(ncol = 2, byrow = TRUE)
+    color = guide_legend(ncol = 6, byrow = TRUE)
   ) +
-  theme(#legend.position = "bottom",
+  theme(legend.position = "bottom",
         axis.text.x = element_text(angle = 45, hjust = 1))
-ggsave(paste0("plotfacet/prop_sceth.jpg"), width = 9, height = 3)
+ggsave(paste0("plotfacet/prop_sceth.jpg"), width = 8, height = 4)
+
+# Social class within ethnic groups
+
+fracplotethnic <- df_final %>%
+  select(
+    year,
+    matches("^(black|white|asian|mixed).*_sc[1-7]$"),
+    starts_with("total_")
+  ) %>%
+  group_by(year) %>%
+  summarise(
+    across(where(is.numeric), ~ sum(.x, na.rm = TRUE)),
+    .groups = "drop"
+  )
+
+vars <- names(fracplotethnic %>%
+                select(matches("^(black|white|asian|mixed).*_sc[1-7]$")))
+
+for (v in vars) {
+  
+  ethnic <- sub("^[^_]*_", "", v)
+  ethnic <- sub("_sc[1-7]$", "", ethnic)
+  
+  denom <- paste0("total_", ethnic)
+  
+  fracplotethnic[[paste0("frac_", v)]] <-
+    fracplotethnic[[v]] / fracplotethnic[[denom]]
+}
+
+ethsc_prop <- fracplotethnic %>%
+  pivot_longer(
+    cols = matches("^frac_.*_sc[1-7]$"),
+    names_to = "variable",
+    values_to = "value"
+  ) %>%
+  mutate(
+    socstatus = sub(".*_(sc[1-7])$", "\\1", variable),
+    specific = sub("^frac_[^_]+_(.*?)_sc[1-7]$", "\\1", variable)
+  ) %>%
+  ggplot(aes(x = year, y = value)) +
+  geom_point(aes(color = socstatus)) +
+  geom_line(aes(color = socstatus, group = socstatus)) +
+  facet_wrap(~ specific, nrow = 1) +
+  scale_y_continuous(labels = scales::label_percent()) +
+   scale_x_discrete(
+    breaks = c("2001", "2011", "2021"),
+    expand = expansion(add = 0.2)
+  ) +
+  labs(
+    y = NULL,
+    color = "Socio-occupational class"
+  ) +
+  ggtitle("Socio-occupational class composition within ethnic groups") +
+  theme_bw() +
+  guides(
+    color = guide_legend(ncol = 7, byrow = TRUE)
+  ) +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+ggsave(
+  "plotfacet/prop_ethsc.jpg",
+  plot = ethsc_prop,
+  width = 11,
+  height = 4
+)
+
+# combined ethss_prop, ethsc_prop
+
+(ethss_prop / ethsc_prop) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+ggsave("plotfacet/ethnic_socstat_prop.jpg", width = 12, height = 8)
+
+# Import the complete rendered image
+ethss_image <- ggdraw() +
+  draw_image("plotfacet/prop_sceth.jpg")
+
+ethsc_image <- ggdraw() +
+  draw_image("plotfacet/prop_ethsc.jpg")
+
+combined_prop <-
+  wrap_elements(full = ethss_image) /
+  wrap_elements(full = ethsc_image) +
+  plot_layout(heights = c(1.5, 1.1))
+
+ggsave(
+  "plotfacet/ethnic_socstat_prop.jpg",
+  plot = combined_prop,
+  width = 12,
+  height = 10,
+  dpi = 300
+)
+
 
 # Ethnic composition of the population, aggregated by year
   
@@ -881,7 +984,18 @@ ethpr_pop <- fracplotpop %>%
     breaks = c("2001", "2011", "2021"),
     expand = expansion(mult = c(0.02, 0.02))
   ) +
-  scale_y_continuous(labels = scales::label_percent()) +
+  scale_y_continuous(
+    labels = scales::label_percent(),
+    breaks = c(
+      seq(0, 0.13, by = 0.05),
+      seq(0.55, 0.75, by = 0.10)
+    ),
+    limits = c(0, 0.75)
+  ) +
+  scale_y_break(
+    c(0.13, 0.55),
+    scales = 0.5
+  ) +
   labs(
     x = "Year",
     y = NULL,
@@ -891,7 +1005,8 @@ ethpr_pop <- fracplotpop %>%
   guides(
     color = guide_legend(ncol = 2, byrow = TRUE)
   ) +
-  theme_bw() 
+  theme_bw() +
+  theme(legend.position = "right")
  ggsave(paste0("plotfacet/prop_ethpop.jpg"), width = 6, height = 3)  
 
 # Social class composition of the  whole population
@@ -951,7 +1066,7 @@ ethpr_pop <- fracplotpop %>%
    labs(
      x = "Year",
      y = NULL,
-     color = "Ethnic group"
+     color = "Social class"
    ) + 
    ggtitle("Socio-occupational composition of Greater London") + 
    guides(
@@ -982,7 +1097,7 @@ ethpr_pop <- fracplotpop %>%
 # it generates plots for each dimension, then combined
 # median(df_final$frac_total_white[df_final$year == 2021], na.rm = TRUE)
  
-boxplot_outliers <- function(var){
+boxplot_outliers <- function(var,titlebox){
   
   outliers <- df_final %>%
     group_by(year) %>%
@@ -1006,8 +1121,9 @@ boxplot_outliers <- function(var){
       max.overlaps = Inf
     ) +
 #    ggtitle( str_to_title(sub("^frac_total_", "Borough Percentage ", var))) +
- ggtitle("Shannon occupational diversity") +
-#    ggtitle("Shannon ethnic diversity") +    
+# ggtitle("Shannon occupational diversity") +
+#    ggtitle("Shannon ethnic diversity") + 
+    ggtitle(titlebox) +
     labs(
       x = "Year",
       y = NULL
@@ -1034,16 +1150,61 @@ vars_ethnicgroup <- paste0("frac_total_",ethnicgroup)
 
 plotsEC <- lapply(vars_ethnicgroup, boxplot_outliers)
 
-plotshannonethnic <- boxplot_outliers("shannon_ethnic_norm")
+plotshannonethnic <- boxplot_outliers("shannon_ethnic_norm", "Shannon ethnic diversity")
 
-combinedEC <-
-  wrap_plots(c(plotsEC,plotshannonethnic), ncol = 3) /
-  ( ethpr_pop | plot_spacer()) +
-  plot_layout(
-    heights = c(3.5, 0.8),
-    widths = c(1, 1)
+ggsave(
+  "plotfacet/ethpr_temp.png",
+  plot = ethpr_pop,
+  width = 9,
+  height = 5,
+  dpi = 300
+)
+# 
+# ethpr_fixed <- cowplot::ggdraw() +
+#   cowplot::draw_image("plotfacet/ethpr_temp.png")
+# 
+# combinedEC <-
+#   wrap_plots(c(plotsEC, plotshannonethnic), ncol = 3) /
+#   (patchwork::wrap_elements(full = ethpr_fixed) | plot_spacer()) +
+#   plot_layout(heights = c(3.5, 1.8))
+# 
+# ggsave(
+#   "plotfacet/combined_distribethPOP.jpg",
+#   plot = combinedEC,
+#   width = 11,
+#   height = 15,
+#   dpi = 300
+# )
+
+# Read and trim white margins
+img <- image_read("plotfacet/prop_ethpop.jpg")
+img <- image_trim(img, fuzz = 5)
+
+# Convert cropped image to a plot
+ethpr_image <- ggdraw() +
+  draw_image(
+    img,
+    x = -0.1,
+    y = 0,
+    width = 0.85,
+    height = 1
   )
-ggsave("plotfacet/combined_distribethPOP.jpg", width = 11, height = 13)
+
+# Combine plots
+combinedEC <-
+  wrap_plots(c(plotsEC, plotshannonethnic), ncol = 3) /
+  wrap_elements(full = ethpr_image) +
+  plot_layout(
+    heights = c(3.5, 1.2)
+  )
+
+ggsave(
+  "plotfacet/combined_distribethPOP.jpg",
+  plot = combinedEC,
+  width = 11,
+  height = 14,
+  dpi = 300
+)
 
 # Ethnic composition within social classes
 socstgroup <- c(paste0("total_sc", 1:7))
@@ -1060,17 +1221,15 @@ ethss_short <-
   (ethss_prop | plot_spacer() |plot_spacer()) +
   plot_layout(widths = c(3,0.2, 0.2))
 
-
 combinedSC <-
   wrap_plots(c(plotsSC,plotshannonsc), ncol = 3) /
-  scpr_short /
-  ethss_short +
+  scpr_short +  
   plot_layout(
-    heights = c(4, 1, 1)
+   heights = c(3.5, 0.8),
+   widths = c(1, 1)
   )
 ggsave("plotfacet/combined_distribethSC.jpg", width = 11, height = 13)
-
-
+ 
 # Moran's I global
 
 # aggregate at the borough level per year, focus on the proportion variables and shannon
@@ -1421,7 +1580,8 @@ plotfig <- function(var1,group1, facetvar,ylabb,colorlabb) {
     ggplot(aes(x = year, y = .data[[var1]])) +
     geom_point(aes(color =  .data[[group1]], group = .data[[group1]] )) +
     geom_line(aes(color = .data[[group1]], group = .data[[group1]])) +
-    scale_x_continuous(breaks = c(2001, 2011, 2021)) + 
+    scale_x_discrete(breaks = c(2001, 2011, 2021),
+                     expand = expansion(add = 0.2)) + 
     facet_wrap(vars(.data[[facetvar]]), nrow = 1) +
     labs(
       x = "Year",
@@ -1430,9 +1590,14 @@ plotfig <- function(var1,group1, facetvar,ylabb,colorlabb) {
     ) +
     scale_color_discrete(labels = toupper) +
     theme_bw() +
+    guides(
+      color = guide_legend(nrow = 1)
+    ) +
     theme(
       legend.position = "bottom",
-      axis.text.x = element_text(angle = 45, hjust = 1)
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      plot.margin = margin(0, 0, 0, 0),
+      panel.spacing.x = unit(0.15, "lines")
     )
  
   ggsave(
@@ -1446,26 +1611,26 @@ plotfig <- function(var1,group1, facetvar,ylabb,colorlabb) {
 
 # Here every single index can be plotted
 
-ethduncan <- plotfig(var1 = "DuncanEth",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Ethnic Duncan", colorlabb = "Socio-occupational\nclass")
-ethscduncan <- plotfig(var1 = "DuncanEthSc",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Within-ethnic Class Duncan", colorlabb = "Socio-occupational\nclass")
-socduncan <- plotfig(var1 = "DuncanSc",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Class Duncan", colorlabb = "Socio-occupational\nclass")
-scethduncan <- plotfig(var1 = "DuncanScEth",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Within-class Ethnic Duncan", colorlabb = "Socio-occupational\nclass")
-ethexp <- plotfig(var1 = "ExpEth",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Ethnic Exposure", colorlabb = "Socio-occupational\nclass")
-scexp <- plotfig(var1 = "ExpSC",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Class Exposure", colorlabb = "Socio-occupational\nclass")
-ethscexp <- plotfig(var1 = "ExpEthSc",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Within-ethnic Class Exposure", colorlabb = "Socio-occupational\nclass")
-scethexp <- plotfig(var1 = "ExpScEth",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Within-class Ethnic Exposure", colorlabb = "Socio-occupational\nclass")
-shaneth <- plotfig(var1 = "ShanEth",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Ethnic Shannon", colorlabb = "Socio-occupational\nclass")
-shansc <- plotfig(var1 = "ShanStatus",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Class Shannon", colorlabb = "Socio-occupational\nclass")
+ethduncan <- plotfig(var1 = "DuncanEth",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Between-ethnic Duncan", colorlabb = "Socio-occupational class")
+ethscduncan <- plotfig(var1 = "DuncanEthSc",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Within-ethnic Duncan", colorlabb = "Socio-occupational class")
+socduncan <- plotfig(var1 = "DuncanSc",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Between-class Duncan", colorlabb = "Socio-occupational class")
+scethduncan <- plotfig(var1 = "DuncanScEth",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Within-class Duncan", colorlabb = "Socio-occupational class")
+ethexp <- plotfig(var1 = "ExpEth",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Own-ethnic Exposure", colorlabb = "Socio-occupational class")
+scexp <- plotfig(var1 = "ExpSC",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Own-class Exposure", colorlabb = "Socio-occupational class")
+ethscexp <- plotfig(var1 = "ExpEthSc",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Within-ethnic Isolation", colorlabb = "Socio-occupational class")
+scethexp <- plotfig(var1 = "ExpScEth",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Within-class Isolation", colorlabb = "Socio-occupational class")
+shaneth <- plotfig(var1 = "ShanEth",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Ethnic Shannon", colorlabb = "Socio-occupational class")
+shansc <- plotfig(var1 = "ShanStatus",group1 = "socstatus",facetvar = "ethnicspecific", ylabb = "Class Shannon", colorlabb = "Socio-occupational class")
 
-(ethduncan / socduncan) +
+(ethduncan / ethscduncan) +  
   plot_layout(guides = "collect") &
   theme(legend.position = "bottom")
-ggsave("plotfacet/ethsoc_duncan.jpg", width = 12, height = 8)
+ggsave("plotfacet/ethnic_duncan.jpg", width = 12, height = 6)
 
-(ethscduncan / scethduncan) +
+(socduncan / scethduncan) +
   plot_layout(guides = "collect") &
   theme(legend.position = "bottom")
-ggsave("plotfacet/within_duncan.jpg", width = 12, height = 8)
+ggsave("plotfacet/socstatus_duncan.jpg", width = 12, height = 6)
 
 (ethexp / scexp) +
   plot_layout(guides = "collect") &
@@ -1480,7 +1645,7 @@ ggsave("plotfacet/exposure_within.jpg", width = 12, height = 6)
 (shaneth / shansc) +
   plot_layout(guides = "collect") &
   theme(legend.position = "bottom")
-ggsave("plotfacet/shannonwithin.jpg", width = 12, height = 8)
+ggsave("plotfacet/shannonwithin.jpg", width = 12, height = 6)
 
 (ethexp / ethscexp) +
   plot_layout(guides = "collect") &
